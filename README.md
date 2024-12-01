@@ -1,6 +1,6 @@
 # Z0fAPICollect
 
-一款简单的 API 信息收集与记录 Burp扩展套件。
+一款可以高度自定义的 API 信息收集与记录 Burp扩展套件。
 
 ## ✨ 核心功能
 
@@ -21,9 +21,19 @@ mvn clean package
 
 > ⚠️ 请注意：编译后的 jar 包位于 target/ 目录下
 
-### 基本使用
+### 页面展示
 
-所有功能均可通过右键菜单快速调用：
+API参数收集
+![image](doc/1.png)
+
+导入API数据
+![image](doc/2.png)
+
+API匹配模式
+![image](doc/3.png)
+
+API记录导出
+![image](doc/4.png)
 
 ## 🤝 参与贡献
 

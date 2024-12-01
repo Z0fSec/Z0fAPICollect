@@ -8,7 +8,6 @@ import java.io.*;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -25,7 +24,7 @@ import java.util.regex.Pattern;
 public final class Utils {
     // ================ 静态字段 ================
     public static final String NAME = "Z0fAPICollect";
-    public static final String VERSION = "0.0.7";
+    public static final String VERSION = "0.1.0";
     public static final String AUTHOR = "EatMans";
     public static final String WORKDIR = System.getProperty("user.home") + "/.z0fsec/Z0fAPICollect/";
     // ================ 常量定义 ================
@@ -413,9 +412,9 @@ public final class Utils {
     /**
      * 获取某个header的值，如果没有此header，返回null。
      */
-    public static String getHeaderValueOf(List<String> headers,String headerName) {
-        if (null ==headers || headerName ==null) return null;
-        for (String header:headers) {
+    public static String getHeaderValueOf(List<String> headers, String headerName) {
+        if (null == headers || headerName == null) return null;
+        for (String header : headers) {
             if (header.contains(":")) {
                 try {
                     String headerNameOrigin = header.split(Header_Spliter, 2)[0].trim();//这里的limit=2 可以理解成分割成2份，否则referer可能别分成3份
@@ -423,7 +422,7 @@ public final class Utils {
                     if (headerNameOrigin.equalsIgnoreCase(headerName)) {
                         return headerValue;
                     }
-                }catch (Exception e) {
+                } catch (Exception e) {
 
                 }
             }

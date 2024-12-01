@@ -29,6 +29,7 @@ public class BurpExtender implements IBurpExtender, IContextMenuFactory, IHttpLi
                 Utils.callbacks.customizeUiComponent(mainUI);
             }
         });
+
         Utils.stdout.println("################################################");
         Utils.stdout.println("[#]  Load Successfully");
         Utils.stdout.println("[#]  Z0fAPICollect v" + Utils.VERSION);
