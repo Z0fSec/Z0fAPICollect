@@ -12,7 +12,6 @@ import java.util.Map;
 
 
 public class MainUI extends JPanel implements ITab {
-    public static Map<String, Boolean> moduleStatus;
     private static JTabbedPane mainPanel;
     IBurpExtenderCallbacks callbacks;
 
@@ -35,6 +34,7 @@ public class MainUI extends JPanel implements ITab {
     public static List<String> init() {
         List<String> uiList = new ArrayList<>();
         uiList.add("burp.ui.APICollectUI");
+//        uiList.add("burp.ui.APICheckUI");
         return uiList;
     }
 

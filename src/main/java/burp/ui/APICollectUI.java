@@ -8,16 +8,19 @@ import burp.ui.UIHepler.GridBagConstraintsHelper;
 import burp.utils.JsonProcessorUtil;
 import burp.utils.UrlCacheUtil;
 import burp.utils.Utils;
+import cn.hutool.poi.excel.ExcelReader;
 import cn.hutool.poi.excel.ExcelUtil;
 import cn.hutool.poi.excel.ExcelWriter;
 import lombok.Data;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableColumnModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
+import java.io.File;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -27,25 +30,27 @@ import java.util.concurrent.ConcurrentHashMap;
 import static burp.IParameter.*;
 import static burp.dao.ZacConfigDao.*;
 
-public class APICollectUI implements UIHandler, IMessageEditorController, IHttpListener {
+public class APICollectUI extends Component implements UIHandler, IMessageEditorController, IHttpListener {
     private static final List<UrlEntry> urldata = new ArrayList<>();  // urldata
     private static final List<PayloadEntry> payloaddata = new ArrayList<>(); // payload
     private static final List<PayloadEntry> payloaddata2 = new ArrayList<>(); // payload
     private static final Set<String> urlHashList = new HashSet<>(); // 存放url的hash值
-    private static final List<String> listErrorKey = new ArrayList<>(); // // 存放错误key
     private static final ConcurrentHashMap<Integer, StringBuilder> vul = new ConcurrentHashMap<>();// 防止插入重复
     private static JTable urltable; // url 表格
     private static JTable payloadtable; // payload 表格
     private static boolean isPassiveScan; // 是否被动扫描
     private static boolean isWhiteDomain; // 是否白名单域名
-
     private static boolean isCollectResponse; // 是否收集响应体
-
     private static boolean isCollectUnique; // 是否去重
-    private static List<ZacConfigBean> zac_configPayload = new ArrayList<>(); // 存放sql关键字
     private static List<String> domainList = new ArrayList<>(); // 存放域名白名单
-    private static List<ZacConfigBean> headerList = new ArrayList<>(); // 存放header白名单
-
+    private static JCheckBox collectGETCheckBox; // GET收集
+    private static JCheckBox collectPOSTCheckBox; // POST收集
+    private static JCheckBox collectDELETECheckBox; // DELETE收集
+    private static JCheckBox collectPUTCheckBox; // PUT收集
+    private static JCheckBox collectHEADCheckBox; // HEAD收集
+    private static JCheckBox collectOPTIONSCheckBox; // OPTIONS收集
+    private static JCheckBox collectCONNECTCheckBox; // CONNECT收集
+    private static JCheckBox collectTRACECheckBox; // TRACE收集
     public AbstractTableModel model = new PayloadModel(); // payload 模型
     private IHttpRequestResponse currentlyDisplayedItem; // 请求响应
     private JPanel panel; // 主面板
@@ -55,15 +60,30 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
     private JScrollPane payloadtablescrollpane; // payload 表格滚动
     private JCheckBox passiveScanCheckBox; // 被动扫描选择框
     private JCheckBox checkWhiteListCheckBox; // 白名单域名检测选择框
-    private JCheckBox collectResponseCheckBox; // 是否对参数进行url编码
+    private JCheckBox collectResponseCheckBox; // 是否对响应包进行收集
+    private JCheckBox comparerToolCheckBox;
+    private JCheckBox decoderToolCheckBox;
+    private JCheckBox extenderToolCheckBox;
+    private JCheckBox intruderToolCheckBox;
+    private JCheckBox proxyToolCheckBox;
+    private JCheckBox repeaterToolCheckBox;
+    private JCheckBox scannerToolCheckBox;
+    private JCheckBox sequencerToolCheckBox;
+    private JCheckBox spiderToolCheckBox;
+    private JCheckBox suiteToolCheckBox;
+    private JCheckBox targetToolCheckBox;
     private JButton saveWhiteListButton; // 白名单域名保存按钮
-    private JButton saveHeaderListButton; // 保存header按钮
+    private JButton saveAPIDataButton; // 导出API接口数据按钮
+    private JButton importAPIDataButton; // 导入API接口数据按钮
     private JTextArea whiteListTextArea; // 白名单域名输入框列表
-    private JTextArea headerTextArea; // header检测数据框列表
     private JButton refreshTableButton; // 刷新表格按钮
     private JButton clearTableButton; // 清空表格按钮
+    private JButton saveListenerConfigButton;
     private IMessageEditor HRequestTextEditor; // 请求
     private IMessageEditor HResponseTextEditor; // 响应
+
+    private SwingWorker<List<Object[]>, Void> importActionWorker;
+
 
     // API收集核心方法
     public static void Collect(IHttpRequestResponse[] requestResponses, boolean isSend) {
@@ -75,10 +95,12 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         String method = analyzeRequest.getMethod(); // 获取请求方法
         URL rdurlURL = analyzeRequest.getUrl(); // 获取请求url
         String url = analyzeRequest.getUrl().toString(); // 获取请求url
+        String path = analyzeRequest.getUrl().getPath();
+
         List<IParameter> paraLists = analyzeRequest.getParameters(); // 获取参数列表
 
-        // 如果method不是get或者post方式直接返回
-        if (!method.equals("GET") && !method.equals("POST")) {
+        // 如果method不是勾选的指定的方法直接返回
+        if (!validMethodEnabled(method)) {
             return;
         }
 
@@ -127,7 +149,7 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         if (responseBody != null) {
             IResponseInfo originalReqResponse = Utils.helpers.analyzeResponse(responseBody);
             List<String> sqlHeaders = originalReqResponse.getHeaders();
-            String contentLength = HelperPlus.getHeaderValueOf(sqlHeaders, "Content-Length");
+            String contentLength = Utils.getHeaderValueOf(sqlHeaders, "Content-Length");
             if (contentLength != null) {
                 originalLength = Integer.parseInt(contentLength);
             } else {
@@ -141,7 +163,7 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         }
 
         // 尝试添加一个url到url表格
-        int logid = addUrl(method, url, originalLength, baseRequestResponse);
+        int logid = addUrl(method, host, path, url, originalLength, 0, baseRequestResponse);
         addToVulStr(logid, "收集完成");
         // 检测常规注入
         for (IParameter para : paraLists) {
@@ -190,7 +212,7 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         }
 
         // 更新数据
-        updateUrl(logid, method, url, originalLength, vul.get(logid).toString(), originalRequestResponse);
+        updateUrl(logid, method, host, path, url, originalLength, 1, vul.get(logid).toString(), originalRequestResponse);
     }
 
     // 在json结果列表中查找指定路径的结果
@@ -202,10 +224,10 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
     }
 
     // 更新url数据到表格
-    public static void updateUrl(int index, String method, String url, int length, String message, IHttpRequestResponse requestResponse) {
+    public static void updateUrl(int index, String method, String host, String path, String url, int length, int counts, String message, IHttpRequestResponse requestResponse) {
         synchronized (urldata) {
             if (index >= 0 && index < urldata.size()) {
-                urldata.set(index, new UrlEntry(index, method, url, length, message, requestResponse));
+                urldata.set(index, new UrlEntry(index, method, host, path, url, length, counts, message, requestResponse));
             }
             urltable.updateUI();
             payloadtable.updateUI();
@@ -237,11 +259,11 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
     }
 
     // 添加url数据到表格
-    public static int addUrl(String method, String url, int length, IHttpRequestResponse requestResponse) {
+    public static int addUrl(String method, String host, String path, String url, int length, int counts, IHttpRequestResponse requestResponse) {
         synchronized (urldata) {
             int id = urldata.size();
-            urldata.add(new UrlEntry(id, method, url, length, "正在检测", requestResponse));
-            APIRecordDao.saveAPIRecord(new APIRecordBean(method, url, getRequestBody(requestResponse), getResponseBody(requestResponse)));
+            urldata.add(new UrlEntry(id, method, host, path, url, length, counts, "正在检测", requestResponse));
+            APIRecordDao.saveAPIRecord(new APIRecordBean(method, host, path, url, getRequestBody(requestResponse), getResponseBody(requestResponse)));
             urltable.updateUI();
             payloadtable.updateUI();
             return id;
@@ -263,10 +285,124 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         }
     }
 
+    /**
+     * 校验是否勾选指定的方法
+     *
+     * @param method 方法的名称
+     * @return true:已勾选 false:未勾选
+     */
+    public static boolean validMethodEnabled(String method) {
+        switch (method) {
+            case "POST":
+                return collectPOSTCheckBox.isSelected();
+            case "GET":
+                return collectGETCheckBox.isSelected();
+            case "PUT":
+                return collectPUTCheckBox.isSelected();
+            case "DELETE":
+                return collectDELETECheckBox.isSelected();
+            case "HEAD":
+                return collectHEADCheckBox.isSelected();
+            case "OPTIONS":
+                return collectOPTIONSCheckBox.isSelected();
+            case "TRACE":
+                return collectTRACECheckBox.isSelected();
+            case "CONNECT":
+                return collectCONNECTCheckBox.isSelected();
+        }
+        return false;
+    }
+
+    private List<String> findFilesWithExtension(File directory, String extension) {
+        List<String> filePaths = new ArrayList<>();
+        if (directory.isDirectory()) {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        filePaths.addAll(findFilesWithExtension(file, extension));
+                    } else if (file.isFile() && file.getName().toLowerCase().endsWith(extension)) {
+                        filePaths.add(file.getAbsolutePath());
+                    }
+                }
+            }
+        } else {
+            filePaths.add(directory.getAbsolutePath());
+        }
+        return filePaths;
+    }
+
+    private String selectDirectory(boolean forDirectories) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setCurrentDirectory(new java.io.File(Utils.WORKDIR));
+        chooser.setDialogTitle(String.format("Select a Directory%s", forDirectories ? "" : " or File"));
+        FileNameExtensionFilter filter = new FileNameExtensionFilter(".xlsx Files", "xlsx");
+        chooser.addChoosableFileFilter(filter);
+        chooser.setFileFilter(filter);
+
+        chooser.setFileSelectionMode(forDirectories ? JFileChooser.DIRECTORIES_ONLY : JFileChooser.FILES_AND_DIRECTORIES);
+        chooser.setAcceptAllFileFilterUsed(!forDirectories);
+
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File selectedDirectory = chooser.getSelectedFile();
+            return selectedDirectory.getAbsolutePath();
+        }
+
+        return "";
+    }
+
+    private void importActionPerformed(ActionEvent e) {
+        String exportDir = selectDirectory(false);
+        if (exportDir.isEmpty()) {
+            return;
+        }
+
+        if (importActionWorker != null && !importActionWorker.isDone()) {
+            importActionWorker.cancel(true);
+        }
+
+        importActionWorker = new SwingWorker<List<Object[]>, Void>() {
+            @Override
+            protected List<Object[]> doInBackground() {
+                List<String> filesWithExtension = findFilesWithExtension(new File(exportDir), ".xlsx");
+                // 指定Excel文件路径
+                File file = new File(filesWithExtension.get(0));
+                // 创建ExcelReader对象，这里假设第一行是标题行
+                ExcelReader reader = ExcelUtil.getReader(file);
+                // 读取所有行，每行作为Map<String, Object>返回，列名来自文件
+                List<Map<String, Object>> rows = reader.readAll();
+                // 遍历所有行
+                for (Map<String, Object> row : rows) {
+                    String method = (String) row.get("方法");
+                    String host = (String) row.get("主机");
+                    String path = (String) row.get("路径");
+                    System.out.println("主机: " + host + ", 路径: " + path);
+//                    addUrl()
+                }
+
+                // 关闭reader
+                reader.close();
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<Object[]> taskStatusList = get();
+                    if (!taskStatusList.isEmpty()) {
+//                        JOptionPane.showMessageDialog(Databoard.this, generateTaskStatusPane(taskStatusList), "Info", JOptionPane.INFORMATION_MESSAGE);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        };
+
+        importActionWorker.execute();
+    }
 
     @Override
     public void processHttpMessage(int toolFlag, boolean messageIsRequest, IHttpRequestResponse iHttpRequestResponse) {
-        if (isPassiveScan && toolFlag == IBurpExtenderCallbacks.TOOL_PROXY && !messageIsRequest) {
+        if (isPassiveScan && validListenerEnabled(toolFlag) && !messageIsRequest) {
             synchronized (urldata) {
                 Thread thread = new Thread(new Runnable() {
                     @Override
@@ -296,24 +432,12 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
 
     @Override
     public void init() {
-        // 获取所有报错关键字
-        List<ZacConfigBean> sqlErrorKey = getSqlListsByType("sqlErrorKey");
-        for (ZacConfigBean zacConfigBean : sqlErrorKey) {
-            listErrorKey.add(zacConfigBean.getValue());
-        }
-
-        // 获取所有payload
-        zac_configPayload = getSqlListsByType("payload");
-
-        List<ZacConfigBean> domain = getSqlListsByType("domain");
+        List<ZacConfigBean> domain = getConfigListsByType("domain");
         // 将domain转为List<String>
         domainList = new ArrayList<>();
         for (ZacConfigBean zacConfigBean : domain) {
             domainList.add(zacConfigBean.getValue());
         }
-
-        // 获取数据库中的header
-        headerList = getSqlListsByType("header");
 
         setupUI();
         setupData();
@@ -325,6 +449,7 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
             urltable.updateUI();
             payloadtable.updateUI();
         });
+
         clearTableButton.addActionListener(e -> {
             urldata.clear();
             payloaddata.clear();
@@ -336,8 +461,8 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
             payloadtable.updateUI();
         });
 
-        // 保存header
-        saveHeaderListButton.addActionListener(e -> {
+        // 保存API测试结果数据
+        saveAPIDataButton.addActionListener(e -> {
             if (urldata.isEmpty()) {
                 JOptionPane.showMessageDialog(null, "暂无数据", "提示", JOptionPane.INFORMATION_MESSAGE);
                 return;
@@ -374,6 +499,9 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
             JOptionPane.showMessageDialog(null, "保存成功，请到D:\\Z0fData\\查看", "提示", JOptionPane.INFORMATION_MESSAGE);
         });
 
+        // 导入API数据
+        importAPIDataButton.addActionListener(this::importActionPerformed);
+
         // 保存白名单域名
         saveWhiteListButton.addActionListener(e -> {
             String whiteListTextAreaText = whiteListTextArea.getText();
@@ -386,16 +514,16 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
                         continue;
                     }
                     ZacConfigBean zacConfigBean = new ZacConfigBean("domain", whitedomain);
-                    saveSql(zacConfigBean);
+                    saveConfig(zacConfigBean);
                 }
             } else {
                 if (whiteListTextAreaText.isEmpty()) {
                     return;
                 }
                 ZacConfigBean zacConfigBean = new ZacConfigBean("domain", whiteListTextAreaText);
-                saveSql(zacConfigBean);
+                saveConfig(zacConfigBean);
             }
-            List<ZacConfigBean> domain = getSqlListsByType("domain");
+            List<ZacConfigBean> domain = getConfigListsByType("domain");
             // 将domain转为List<String>
             for (ZacConfigBean zacConfigBean : domain) {
                 domainList.add(zacConfigBean.getValue());
@@ -420,7 +548,7 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
             }
         });
 
-        // 白名单域名检测选择框事件
+        // 是否收集响应体选择框事件
         collectResponseCheckBox.addActionListener(new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -428,20 +556,15 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
             }
         });
 
-
-        // 数据库获取header,输出到面板
-        List<ZacConfigBean> header = getSqlListsByType("header");
-        for (ZacConfigBean zacConfigBean : header) {
-            // 如果是最后一个，就不加换行符
-            if (header.indexOf(zacConfigBean) == header.size() - 1) {
-                headerTextArea.setText(headerTextArea.getText() + zacConfigBean.getValue());
-                break;
+        collectResponseCheckBox.addActionListener(new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                isCollectUnique = collectResponseCheckBox.isSelected();
             }
-            headerTextArea.setText(headerTextArea.getText() + zacConfigBean.getValue() + "\n");
-        }
+        });
 
         // 数据库获取白名单域名,输出到面板
-        List<ZacConfigBean> domains = getSqlListsByType("domain");
+        List<ZacConfigBean> domains = getConfigListsByType("domain");
         for (ZacConfigBean zacConfigBean : domains) {
             // 如果是最后一个，就不加换行符
             if (domains.indexOf(zacConfigBean) == domains.size() - 1) {
@@ -449,6 +572,33 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
                 break;
             }
             whiteListTextArea.setText(whiteListTextArea.getText() + zacConfigBean.getValue() + "\n");
+        }
+
+        List<ZacConfigBean> methods = getConfigListsByType("method");
+        for (ZacConfigBean zacConfigBean : methods) {
+            if (Objects.equals(zacConfigBean.getValue(), "GET")) collectGETCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "POST")) collectPOSTCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "PUT")) collectPUTCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "DELETE")) collectDELETECheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "HEAD")) collectHEADCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "OPTIONS")) collectOPTIONSCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "TRACE")) collectTRACECheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "CONNECT")) collectCONNECTCheckBox.setSelected(true);
+        }
+
+        List<ZacConfigBean> listeners = getConfigListsByType("listener");
+        for (ZacConfigBean zacConfigBean : listeners) {
+            if (Objects.equals(zacConfigBean.getValue(), "Proxy")) proxyToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Comparer")) comparerToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Decoder")) decoderToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Extender")) extenderToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Intruder")) intruderToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Repeater")) repeaterToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Scanner")) scannerToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Sequencer")) sequencerToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Spider")) spiderToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Suite")) suiteToolCheckBox.setSelected(true);
+            if (Objects.equals(zacConfigBean.getValue(), "Target")) targetToolCheckBox.setSelected(true);
         }
 
     }
@@ -479,7 +629,6 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         urltable = new URLTable(urlModel);
         urltablescrollpane.setViewportView(urltable);
 
-
         // 创建一个自定义的单元格渲染器
         DefaultTableCellRenderer renderer = new DefaultTableCellRenderer() {
             @Override
@@ -495,8 +644,7 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         };
 
         // 表格渲染
-        urltable.getColumnModel().getColumn(4).setCellRenderer(renderer);
-
+        urltable.getColumnModel().getColumn(3).setCellRenderer(renderer);
 
         payloadtablescrollpane = new JScrollPane();
         zsSplitPane.setRightComponent(payloadtablescrollpane);
@@ -524,12 +672,10 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         leftSplitPane.setLeftComponent(zsSplitPane);
         leftSplitPane.setRightComponent(zxSplitPane);
 
-
         // 右边的上下按7:3分割
         JSplitPane rightSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         rightSplitPane.setResizeWeight(0.7);
         rightSplitPane.setDividerLocation(0.7);
-
 
         // 右边的上部分
         // 添加被动扫描选择框
@@ -540,54 +686,93 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         collectResponseCheckBox = new JCheckBox("收集响应包数据");
         // 白名单域名保存按钮
         saveWhiteListButton = new JButton("保存白名单域名");
-        // 保存header按钮
-        saveHeaderListButton = new JButton("导出Xlsx");
+        // 导出Xlsx按钮
+        saveAPIDataButton = new JButton("导出测试结果");
+        // 导入Xlsx按钮
+        importAPIDataButton = new JButton("导入接口列表");
         // 白名单域名输入框列表
         whiteListTextArea = new JTextArea(5, 10);
         whiteListTextArea.setLineWrap(false); // 自动换行
         whiteListTextArea.setWrapStyleWord(false); // 按单词换行
         JScrollPane whiteListTextAreascrollPane = new JScrollPane(whiteListTextArea);
 
-        // header检测数据框列表
-        headerTextArea = new JTextArea(5, 10);
-        headerTextArea.setLineWrap(true); // 自动换行
-        headerTextArea.setWrapStyleWord(true); // 按单词换行
-        JScrollPane headerTextAreascrollPane = new JScrollPane(headerTextArea);
         // 刷新表格按钮
         refreshTableButton = new JButton("刷新表格");
         // 清空表格按钮
         clearTableButton = new JButton("清空表格");
         // 白名单域名label
         JLabel whiteDomainListLabel = new JLabel("白名单域名");
-        // 检测header label
-        JLabel headerLabel = new JLabel("header检测列表");
+        // 收集方法范围 label
+        JLabel methodLabel = new JLabel("收集方法范围");
+        collectGETCheckBox = new JCheckBox("GET");
+        collectPOSTCheckBox = new JCheckBox("POST");
+        collectPUTCheckBox = new JCheckBox("PUT");
+        collectDELETECheckBox = new JCheckBox("DELETE");
+        collectHEADCheckBox = new JCheckBox("HEAD");
+        collectOPTIONSCheckBox = new JCheckBox("OPTIONS");
+        collectTRACECheckBox = new JCheckBox("TRACE");
+        collectCONNECTCheckBox = new JCheckBox("CONNECT");
 
         // 添加到右边的上部分
         JPanel rightTopPanel = new JPanel();
         rightTopPanel.setLayout(new GridBagLayout());
         rightTopPanel.add(passiveScanCheckBox, new GridBagConstraintsHelper(0, 0, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
         rightTopPanel.add(checkWhiteListCheckBox, new GridBagConstraintsHelper(0, 1, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
-        rightTopPanel.add(collectResponseCheckBox, new GridBagConstraintsHelper(2, 1, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
-        rightTopPanel.add(saveWhiteListButton, new GridBagConstraintsHelper(0, 2, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
-        rightTopPanel.add(saveHeaderListButton, new GridBagConstraintsHelper(1, 2, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
-        rightTopPanel.add(whiteDomainListLabel, new GridBagConstraintsHelper(0, 3, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
-        rightTopPanel.add(whiteListTextAreascrollPane, new GridBagConstraintsHelper(0, 4, 3, 1).setInsets(5).setIpad(0, 0).setWeight(1.0, 1.0).setAnchor(GridBagConstraints.CENTER).setFill(GridBagConstraints.BOTH));
-        rightTopPanel.add(headerLabel, new GridBagConstraintsHelper(0, 5, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
-        rightTopPanel.add(headerTextAreascrollPane, new GridBagConstraintsHelper(0, 6, 3, 1).setInsets(5).setIpad(0, 0).setWeight(1.0, 1.0).setAnchor(GridBagConstraints.CENTER).setFill(GridBagConstraints.BOTH));
-        rightTopPanel.add(refreshTableButton, new GridBagConstraintsHelper(0, 7, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
-        rightTopPanel.add(clearTableButton, new GridBagConstraintsHelper(1, 7, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectResponseCheckBox, new GridBagConstraintsHelper(1, 1, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(saveAPIDataButton, new GridBagConstraintsHelper(0, 2, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+//        rightTopPanel.add(importAPIDataButton, new GridBagConstraintsHelper(1, 2, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(refreshTableButton, new GridBagConstraintsHelper(0, 3, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(clearTableButton, new GridBagConstraintsHelper(1, 3, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(whiteDomainListLabel, new GridBagConstraintsHelper(0, 4, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(saveWhiteListButton, new GridBagConstraintsHelper(1, 4, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(whiteListTextAreascrollPane, new GridBagConstraintsHelper(0, 5, 3, 1).setInsets(5).setIpad(0, 0).setWeight(1.0, 1.0).setAnchor(GridBagConstraints.CENTER).setFill(GridBagConstraints.BOTH));
+        rightTopPanel.add(methodLabel, new GridBagConstraintsHelper(0, 6, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectGETCheckBox, new GridBagConstraintsHelper(0, 7, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectPOSTCheckBox, new GridBagConstraintsHelper(1, 7, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectPUTCheckBox, new GridBagConstraintsHelper(0, 8, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectDELETECheckBox, new GridBagConstraintsHelper(1, 8, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectOPTIONSCheckBox, new GridBagConstraintsHelper(0, 9, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectHEADCheckBox, new GridBagConstraintsHelper(1, 9, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectTRACECheckBox, new GridBagConstraintsHelper(0, 10, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightTopPanel.add(collectCONNECTCheckBox, new GridBagConstraintsHelper(1, 10, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
 
         rightSplitPane.setTopComponent(rightTopPanel);
 
-        // 左右分割面板添加rightDownLeftPanel和rightDownRightPanel
-        JSplitPane rightDownPanel = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        rightDownPanel.setResizeWeight(0.5);
-        rightDownPanel.setDividerLocation(0.5);
+        // 右边的下部分左边
+        // 监听配置 label
+        JLabel listenerConfigLabel = new JLabel("监听范围配置");
+        saveListenerConfigButton = new JButton("保存监听配置");
+        comparerToolCheckBox = new JCheckBox("对比(Comparer)");
+        decoderToolCheckBox = new JCheckBox("编码(Decoder)");
+        extenderToolCheckBox = new JCheckBox("插件(Extender)");
+        intruderToolCheckBox = new JCheckBox("测试(Intruder)");
+        proxyToolCheckBox = new JCheckBox("代理(Proxy)");
+        repeaterToolCheckBox = new JCheckBox("重放(Repeater)");
+        scannerToolCheckBox = new JCheckBox("扫描(Scanner)");
+        sequencerToolCheckBox = new JCheckBox("定序(Sequencer)");
+        spiderToolCheckBox = new JCheckBox("爬虫(Spider)");
+        suiteToolCheckBox = new JCheckBox("程序(Suite)");
+        targetToolCheckBox = new JCheckBox("目标(Target)");
 
-        rightSplitPane.setBottomComponent(rightDownPanel);
+        JPanel rightDownLeftPanel = new JPanel();
+        rightDownLeftPanel.setLayout(new GridBagLayout());
+        rightDownLeftPanel.add(listenerConfigLabel, new GridBagConstraintsHelper(0, 0, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(proxyToolCheckBox, new GridBagConstraintsHelper(0, 1, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(comparerToolCheckBox, new GridBagConstraintsHelper(1, 1, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(decoderToolCheckBox, new GridBagConstraintsHelper(0, 2, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(extenderToolCheckBox, new GridBagConstraintsHelper(1, 2, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(intruderToolCheckBox, new GridBagConstraintsHelper(0, 3, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(repeaterToolCheckBox, new GridBagConstraintsHelper(1, 3, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(scannerToolCheckBox, new GridBagConstraintsHelper(0, 4, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(sequencerToolCheckBox, new GridBagConstraintsHelper(1, 4, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(spiderToolCheckBox, new GridBagConstraintsHelper(0, 5, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(suiteToolCheckBox, new GridBagConstraintsHelper(1, 5, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightDownLeftPanel.add(targetToolCheckBox, new GridBagConstraintsHelper(0, 6, 1, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+//        rightDownLeftPanel.add(saveListenerConfigButton, new GridBagConstraintsHelper(0, 7, 2, 1).setInsets(5).setIpad(0, 0).setWeight(0, 0).setAnchor(GridBagConstraints.WEST).setFill(GridBagConstraints.NONE));
+        rightSplitPane.setBottomComponent(rightDownLeftPanel);
+
         panel.add(leftSplitPane, BorderLayout.CENTER);
         panel.add(rightSplitPane, BorderLayout.EAST);
-
     }
 
     @Override
@@ -600,21 +785,61 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         return "API收集";
     }
 
+    /**
+     * 校验是否勾选指定的监听模块
+     *
+     * @param msgType 模块的类型编号
+     * @return true:已勾选 false:未勾选
+     */
+    public boolean validListenerEnabled(int msgType) {
+        switch (msgType) {
+            case IBurpExtenderCallbacks.TOOL_COMPARER:
+                return comparerToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_DECODER:
+                return decoderToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_EXTENDER:
+                return extenderToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_INTRUDER:
+                return intruderToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_PROXY:
+                return proxyToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_REPEATER:
+                return repeaterToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_SCANNER:
+                return scannerToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_SEQUENCER:
+                return sequencerToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_SPIDER:
+                return spiderToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_SUITE:
+                return suiteToolCheckBox.isSelected();
+            case IBurpExtenderCallbacks.TOOL_TARGET:
+                return targetToolCheckBox.isSelected();
+        }
+        return false;
+    }
+
     // url 实体类
     @Data
     public static class UrlEntry {
         final int id;
         final String method;
         final String url;
+        final String host;
+        final String path;
         final int length;
+        final int counts;
         final String status;
         final IHttpRequestResponse requestResponse;
 
-        UrlEntry(int id, String method, String url, int length, String status, IHttpRequestResponse requestResponse) {
+        UrlEntry(int id, String method, String host, String path, String url, int length, int counts, String status, IHttpRequestResponse requestResponse) {
             this.id = id;
             this.method = method;
             this.url = url;
+            this.path = path;
+            this.host = host;
             this.length = length;
+            this.counts = counts;
             this.status = status;
             this.requestResponse = requestResponse;
         }
@@ -627,7 +852,6 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
         final String type;
         final String key;
         final String value;
-
         final String time;
         final IHttpRequestResponse requestResponse;
 
@@ -651,7 +875,7 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
 
         @Override
         public int getColumnCount() {
-            return 5;
+            return 6;
         }
 
         @Override
@@ -662,10 +886,12 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
                 case 1:
                     return urldata.get(rowIndex).method;
                 case 2:
-                    return urldata.get(rowIndex).url;
+                    return urldata.get(rowIndex).host;
                 case 3:
-                    return urldata.get(rowIndex).length;
+                    return urldata.get(rowIndex).path;
                 case 4:
+                    return urldata.get(rowIndex).counts;
+                case 5:
                     return urldata.get(rowIndex).status;
                 default:
                     return null;
@@ -680,10 +906,12 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
                 case 1:
                     return "Method";
                 case 2:
-                    return "Url";
+                    return "Host";
                 case 3:
-                    return "Length";
+                    return "Path";
                 case 4:
+                    return "Counts";
+                case 5:
                     return "Status";
                 default:
                     return null;
@@ -794,5 +1022,4 @@ public class APICollectUI implements UIHandler, IMessageEditorController, IHttpL
             super.changeSelection(rowIndex, columnIndex, toggle, extend);
         }
     }
-
 }

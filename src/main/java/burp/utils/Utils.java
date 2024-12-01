@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 public final class Utils {
     // ================ 静态字段 ================
     public static final String NAME = "Z0fAPICollect";
-    public static final String VERSION = "0.0.4";
+    public static final String VERSION = "0.0.7";
     public static final String AUTHOR = "EatMans";
     public static final String WORKDIR = System.getProperty("user.home") + "/.z0fsec/Z0fAPICollect/";
     // ================ 常量定义 ================
@@ -33,6 +33,7 @@ public final class Utils {
     private static final String DEFAULT_FILE_DATETIME_PATTERN = "MMdd-HHmmss";
     private static final String REQ_FILE_SUFFIX = ".req";
     private static final String DEFAULT_CHARSET = "UTF-8";
+    private final static String Header_Spliter = ":";
     /**
      * HTML标题提取的正则表达式
      */
@@ -407,5 +408,26 @@ public final class Utils {
         sanitized = sanitized.replaceAll("\\.$", "");
 
         return sanitized;
+    }
+
+    /**
+     * 获取某个header的值，如果没有此header，返回null。
+     */
+    public static String getHeaderValueOf(List<String> headers,String headerName) {
+        if (null ==headers || headerName ==null) return null;
+        for (String header:headers) {
+            if (header.contains(":")) {
+                try {
+                    String headerNameOrigin = header.split(Header_Spliter, 2)[0].trim();//这里的limit=2 可以理解成分割成2份，否则referer可能别分成3份
+                    String headerValue = header.split(Header_Spliter, 2)[1].trim();
+                    if (headerNameOrigin.equalsIgnoreCase(headerName)) {
+                        return headerValue;
+                    }
+                }catch (Exception e) {
+
+                }
+            }
+        }
+        return null;
     }
 }

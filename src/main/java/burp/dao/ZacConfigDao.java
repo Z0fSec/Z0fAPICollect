@@ -14,7 +14,7 @@ import java.util.List;
 public class ZacConfigDao {
 
     // 保存
-    public static void saveSql(ZacConfigBean zacConfigBean) {
+    public static void saveConfig(ZacConfigBean zacConfigBean) {
         String sql = "INSERT OR REPLACE INTO zac_config (type, value) VALUES (?, ?)";
         Connection connection = null;
         try {
@@ -36,7 +36,7 @@ public class ZacConfigDao {
     }
 
     // 更新
-    public static void updateSql(ZacConfigBean zacConfigBean) {
+    public static void updateConfig(ZacConfigBean zacConfigBean) {
         String sql = "update zac_config set value = ? where type = ?";
         Connection connection = null;
         try {
@@ -58,7 +58,7 @@ public class ZacConfigDao {
     }
 
     // 根据type获取多个
-    public static List<ZacConfigBean> getSqlListsByType(String type) {
+    public static List<ZacConfigBean> getConfigListsByType(String type) {
         List<ZacConfigBean> sqlLists = new ArrayList<>();
         String routesql = "select * from zac_config where type = ?";
         Connection connection = null;
@@ -88,36 +88,6 @@ public class ZacConfigDao {
         return sqlLists;
     }
 
-    // 根据type获取一个
-    public static ZacConfigBean getSqlListByType(String type) {
-        String routesql = "select * from zac_config where type = ?";
-        Connection connection = null;
-        try {
-            connection = DbUtils.getConnection();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        PreparedStatement ps = null;
-        ResultSet resultSet = null;
-        try {
-            ps = connection.prepareStatement(routesql);
-            ps.setString(1, type);
-            resultSet = ps.executeQuery();
-            while (resultSet.next()) {
-                ZacConfigBean zacConfigBean = new ZacConfigBean();
-                zacConfigBean.setId(resultSet.getInt("id"));
-                zacConfigBean.setType(resultSet.getString("type"));
-                zacConfigBean.setValue(resultSet.getString("value"));
-                return zacConfigBean;
-            }
-        } catch (Exception e) {
-            Utils.stderr.println(e.getMessage());
-        } finally {
-            DbUtils.close(connection, ps, resultSet);
-        }
-        return null;
-    }
-
     // 根据type删除
     public static void deleteSqlByType(String type) {
         String sql = "delete from zac_config where type = ?";
@@ -140,7 +110,7 @@ public class ZacConfigDao {
     }
 
     // 根据type和value删除
-    public static void deleteSqlByTypeAndValue(String type, String value) {
+    public static void deleteConfigByTypeAndValue(String type, String value) {
         String sql = "delete from zac_config where type = ? and value = ?";
         Connection connection = null;
         try {

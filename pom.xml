@@ -4,7 +4,7 @@
 
   <groupId>com.z0fsec</groupId>
   <artifactId>Z0fAPICollect</artifactId>
-  <version>0.0.5</version>
+  <version>0.0.7</version>
   <packaging>jar</packaging>
 
   <name>Z0fAPICollect</name>
@@ -21,11 +21,6 @@
   </repositories>
 
   <dependencies>
-    <dependency>
-      <groupId>com.github.bit4woo</groupId>
-      <artifactId>burp-api-common</artifactId>
-      <version>master-SNAPSHOT</version>
-    </dependency>
     <!-- https://mvnrepository.com/artifact/com.intellij/forms_rt -->
     <dependency>
       <groupId>com.intellij</groupId>

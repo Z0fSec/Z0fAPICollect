@@ -50,13 +50,13 @@ public class DbUtils {
             // zac_config table
             sqls.add("CREATE TABLE IF NOT EXISTS 'zac_config' ('id' INTEGER, 'type' TEXT, 'value' TEXT, PRIMARY KEY ('id'))");
 
-            sqls.add("CREATE TABLE IF NOT EXISTS 'api_record' ('id' INTEGER, 'method' TEXT, 'url' TEXT,'request' TEXT,'response' TEXT, PRIMARY KEY ('id'))");
+            sqls.add("CREATE TABLE IF NOT EXISTS 'api_record' ('id' INTEGER, 'method' TEXT, 'host' TEXT,'path' TEXT,'url' TEXT,'request' TEXT,'response' TEXT, PRIMARY KEY ('id'))");
 
             // Insert zac_config data
-            sqls.add("INSERT INTO 'zac_config' VALUES (14, 'header', 'User-Agent')");
-            sqls.add("INSERT INTO 'zac_config' VALUES (15, 'header', 'Cookie')");
-            sqls.add("INSERT INTO 'zac_config' VALUES (21, 'domain', 'www.baidu.com')");
-            sqls.add("INSERT INTO 'zac_config' VALUES (23, 'payload', '0''XOR(if(1,sleep(6),0))XOR''Z')");
+            sqls.add("INSERT INTO 'zac_config' VALUES (1, 'domain', 'www.z0fsec.com')");
+            sqls.add("INSERT INTO 'zac_config' VALUES (2, 'method', 'GET')");
+            sqls.add("INSERT INTO 'zac_config' VALUES (3, 'method', 'POST')");
+            sqls.add("INSERT INTO 'zac_config' VALUES (4, 'listener', 'Proxy')");
             for (String sql : sqls) {
                 Statement statement = connection.createStatement();
                 statement.execute(sql);

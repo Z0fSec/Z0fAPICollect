@@ -13,33 +13,6 @@ import java.util.List;
 
 
 public class APIRecordDao {
-    // 根据模块和类型获取配置
-    public static APIRecordBean getConfig(String module, String type) {
-        APIRecordBean api_record = new APIRecordBean();
-        String sql = "select value from api_record where module = ? and type = ? order by id desc limit 1";
-        Connection connection = null;
-        try {
-            connection = DbUtils.getConnection();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        PreparedStatement ps = null;
-        ResultSet resultSet = null;
-        try {
-            ps = connection.prepareStatement(sql);
-            ps.setString(1, module);
-            ps.setString(2, type);
-            resultSet = ps.executeQuery();
-            while (resultSet.next()) {
-                api_record.setUrl(resultSet.getString("url"));
-            }
-        } catch (Exception e) {
-            Utils.stderr.println(e.getMessage());
-        } finally {
-            DbUtils.close(connection, ps, resultSet);
-        }
-        return api_record;
-    }
 
     // 删除配置
     public static void deleteAPI(String url) {
@@ -62,9 +35,9 @@ public class APIRecordDao {
         }
     }
 
-    // 根据id删除工具配置
-    public static void deleteToolConfig(String type) {
-        String sql = "delete from api_record where type = ?";
+    // 根据host删除API记录
+    public static void deleteAPIRecordByHost(String host) {
+        String sql = "delete from api_record where host = ?";
         Connection connection = null;
         try {
             connection = DbUtils.getConnection();
@@ -74,7 +47,28 @@ public class APIRecordDao {
         PreparedStatement ps = null;
         try {
             ps = connection.prepareStatement(sql);
-            ps.setString(1, type);
+            ps.setString(1, host);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            DbUtils.close(connection, ps, null);
+        }
+    }
+
+    // 根据host删除API记录
+    public static void deleteAPIRecordById(Integer id) {
+        String sql = "delete from api_record where id = ?";
+        Connection connection = null;
+        try {
+            connection = DbUtils.getConnection();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        PreparedStatement ps = null;
+        try {
+            ps = connection.prepareStatement(sql);
+            ps.setInt(1, id);
             ps.executeUpdate();
         } catch (Exception e) {
             e.printStackTrace();
@@ -108,7 +102,7 @@ public class APIRecordDao {
         }
     }
 
-    // 保存配置
+    // 保存API记录
     public static void saveAPIRecord(APIRecordBean api_record) {
         String sql = "INSERT OR REPLACE INTO api_record (method , url , request , response ) VALUES (?, ?, ?,?)";
         Connection connection = null;
@@ -130,10 +124,9 @@ public class APIRecordDao {
         } finally {
             DbUtils.close(connection, ps, null);
         }
-
     }
 
-    // 获取工具配置
+    // 获取API记录列表
     public static List<APIRecordBean> getAPIRecords() {
         List<APIRecordBean> api_records = new ArrayList<>();
         String sql = "select * from api_record";
